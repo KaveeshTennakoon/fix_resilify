@@ -3,11 +3,12 @@ import 'package:resilify/services/auth_service.dart';
 import 'package:resilify/services/streak_service.dart';
 import 'package:rive/rive.dart';
 import 'package:resilify/core/app_colors.dart';
+import 'package:rive/rive.dart';
 import 'package:just_audio/just_audio.dart';
 
 class Victory extends StatefulWidget {
   final int? stars;
-
+  
   const Victory({super.key, this.stars});
 
   @override
@@ -23,8 +24,8 @@ class _VictoryState extends State<Victory> {
   final AuthService _authService = AuthService();
   final StreakService _streakService = StreakService();
 
-  @override
-  void initState() {
+    @override
+    void initState() {
     super.initState();
     _idle = SimpleAnimation('idle', autoplay: true);
     audioPlayer.setAsset('assets/sounds/victory.mp3');
@@ -40,7 +41,7 @@ class _VictoryState extends State<Victory> {
   }
 
   _checkStreakStatusAndNavigate() async {
-    String? userId = _authService.currentUserId; // Get the current user ID
+    String? userId = _authService.currentUser?.uid; // Get the current user ID
     if (userId != null) {
       bool canProceedToStreak = await _streakService.shouldGoToStreak(userId);
       // Navigate based on streak status

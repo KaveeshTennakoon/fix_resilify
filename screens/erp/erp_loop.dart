@@ -18,14 +18,11 @@ import "package:resilify/widgets/microphone.dart"; //customised mic widget
 import "package:resilify/widgets/mascot.dart"; //mascot widget
 import 'package:resilify/widgets/balloon.dart'; //balloon widget
 import 'package:resilify/services/hive_service.dart';
-import 'package:resilify/services/auth_service.dart'; // Added import for AuthService
-
 class ERPLoopPage extends StatefulWidget {//stateful bc the animations and widgets change states
   const ERPLoopPage({super.key});
   @override
   _ERPLoopPageState createState() => _ERPLoopPageState();
 }
-
 class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin {
   late RiveAnimationController _eyeBlinkController; //animation controller for mascot
   late RiveAnimationController _talkingController;
@@ -56,8 +53,7 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
   Timer? _timer; //timer for balloon appearing
   int _stars = 0; //stars collected
   final HiveService _hiveService = HiveService(); //hive service to store data
-  final AuthService _authService = AuthService(); // Added AuthService
-
+ 
   @override
   void initState() {
     super.initState();
@@ -88,10 +84,10 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
 
   void _startRecording() async {
     _updateMicState('start record');
-    _waveDisplayStartRecordController.isActive = true; //transition animation from mic to recording waves
+     _waveDisplayStartRecordController.isActive = true; //transition animation from mic to recording waves
     Future.delayed(Duration(milliseconds: 500), () {
-      _updateMicState('recording');
-      _listeningController.isActive = true; //animation of recording waves
+     _updateMicState('recording');
+     _listeningController.isActive = true; //animation of recording waves
     });
     if (!kIsWeb) {
       var status = await Permission.microphone.request();
@@ -125,20 +121,20 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
 
   void _deleteRecording() {
     _updateMicState('delete');
-    _deleteRecordController.isActive = true; // transition animation from bin to mic (idle)
-    hasRecording = false;
-    Future.delayed(Duration(milliseconds: 800), () async { // Wait for the delete animation to complete before resetting
-      if (!kIsWeb) {
-        await record.cancel();
-        record.dispose();
-      } else {
-        _microphoneRecorder.stop();
-      }
-      _updateMicState('idle');
-      _micController = SimpleAnimation('idle'); // re-initialize mic animation
-      _microphoneRecorder = MicrophoneRecorder()..init(); // re-initialize web recorder after calling stop function
-      record = AudioRecorder(); // re-initialize android recorder after calling dispose
-    });
+      _deleteRecordController.isActive = true; // transition animation from bin to mic (idle)
+      hasRecording = false;
+      Future.delayed(Duration(milliseconds: 800), () async { // Wait for the delete animation to complete before resetting
+        if (!kIsWeb) {
+          await record.cancel();
+          record.dispose();
+        } else {
+          _microphoneRecorder.stop();
+        }
+        _updateMicState('idle');
+          _micController = SimpleAnimation('idle'); // re-initialize mic animation 
+          _microphoneRecorder = MicrophoneRecorder()..init(); // re-initialize web recorder after calling stop function
+          record = AudioRecorder(); // re-initialize android recorder after calling dispose
+      });
   }
 
   void _handleTap() {//for mic animation state controlling
@@ -184,20 +180,20 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
       });
     });
   }
-
+  
   void _balloonTap() { //ontap controller for balloon widget
     if (balloonVisible = true) {
       _balloonPopping();
-    }
+    } 
   }
 
   _startGame() async {//initialize timer controller only when the game starts to prevent the rebuilding of the widget with each time picking state
-    _pieAnimationController = PieAnimationController(
+      _pieAnimationController = PieAnimationController(
       vsync: this,
     );
-
+    
     setState(() {
-      gameStarted = true;
+      gameStarted = true; 
     });
     await Future.delayed(Duration(seconds: 1)); //delay to show the timer animation appear
     _startTimer(); // Start the timer animation
@@ -222,26 +218,13 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
             _pauseGame();
             _elapsedTime = DateTime.now().difference(_startTime!);
 
-            String? userId = _authService.currentUserId;
-            if (userId != null) {
-              if (_elapsedTime.inMilliseconds < _duration.inMilliseconds / 2) {
-                _hiveService.saveGameSession(
-                    uid: userId,
-                    timePlayed: _startTime!,
-                    duration: _elapsedTime.inMinutes,
-                    points: _stars
-                );
-                Navigator.pushReplacementNamed(context, '/game_over');
-              } else {
-                _stars = 3;
-                _hiveService.saveGameSession(
-                    uid: userId,
-                    timePlayed: _startTime!,
-                    duration: _elapsedTime.inMinutes,
-                    points: _stars
-                );
-                Navigator.pushReplacementNamed(context, '/halfway_victory');
-              }
+            if (_elapsedTime.inMilliseconds < _duration.inMilliseconds / 2) {
+              _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+              Navigator.pushReplacementNamed(context, '/game_over');
+            } else {
+              _stars = 3;
+              _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+              Navigator.pushReplacementNamed(context, '/halfway_victory');
             }
           }
         });
@@ -258,20 +241,20 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
       await Future.delayed(Duration(milliseconds: 500)); // minor delay for the animation to start playing
       _startTalking();
       await _audioPlayer.playerStateStream.firstWhere((playerState) =>
-      playerState.processingState ==ProcessingState.completed); //waiting for the audioplayer to complete one cycle
+          playerState.processingState ==ProcessingState.completed); //waiting for the audioplayer to complete one cycle
       _stopTalking();
     }
   }
 
   void _pauseGame(){ //pause game when back button is pressed and confimation box is shown
-    _pauseTimer();
-    _stopTalking();
+     _pauseTimer();
+     _stopTalking();
     _audioPlayer.pause();
-    setState(() {
+     setState(() { 
       balloonVisible= false;
       paused = true; //prevents the appearance of the balloon widget while game is paused
     });
-    _pauseStartTime = DateTime.now(); //starting a pause timer incase user resumes back to game
+     _pauseStartTime = DateTime.now(); //starting a pause timer incase user resumes back to game
     _elapsedTime = DateTime.now().difference(_startTime!); //recording the elapsed time if user exits the game
   }
 
@@ -284,60 +267,50 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
     _pieAnimationController.startAnim?.call(); //resuming timer
     _startTalking();
     _audioPlayer.play(); //resuming audio player
-    setState(() {
-      paused = false;
+     setState(() { 
+      paused = false; 
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final double screenWidth = MediaQuery.of(context).size.width;
+     final double screenWidth = MediaQuery.of(context).size.width;
     return WillPopScope(
       onWillPop: () async {
-        if (gameStarted) {
-          _pauseGame(); // Pause game state if it's running
-          String exitRoute = _elapsedTime.inMilliseconds < _duration.inMilliseconds / 2
-              ? '/game_over'
-              : '/halfway_victory';
-          // Show the exit confirmation dialog and handle navigation based on user confirmation
-          bool shouldPop = await showExitConfirmationDialog(
-            context,
-            exitRoute,
-                (userConfirmedExit) {
-              if (userConfirmedExit) {
-                // Perform the actions if the user confirmed exit
-                _audioPlayer.pause();
-                if (_elapsedTime.inMilliseconds > _duration.inMilliseconds / 2) {
-                  _stars = 3;
-                }
-
-                String? userId = _authService.currentUserId;
-                if (userId != null) {
-                  _hiveService.saveGameSession(
-                      uid: userId,
-                      timePlayed: _startTime!,
-                      duration: _elapsedTime.inMinutes,
-                      points: _stars
-                  );
-                }
-
-                Navigator.pushReplacementNamed(context, exitRoute); // Navigate to the exit route
-              } else {
-                // Perform actions if the user canceled exit
-                _resumeGame();
-              }
-            },
-          );
-          return shouldPop; // Only pop if confirmed (shouldPop is true)
+  if (gameStarted) {
+    _pauseGame(); // Pause game state if it's running
+    String exitRoute = _elapsedTime.inMilliseconds < _duration.inMilliseconds / 2
+        ? '/game_over'
+        : '/halfway_victory';
+    // Show the exit confirmation dialog and handle navigation based on user confirmation
+    bool shouldPop = await showExitConfirmationDialog(
+      context,
+      exitRoute,
+      (userConfirmedExit) {
+        if (userConfirmedExit) {
+          // Perform the actions if the user confirmed exit
+          _audioPlayer.pause();
+          if (_elapsedTime.inMilliseconds > _duration.inMilliseconds / 2) {
+            _stars = 3;
+          }
+          _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+          Navigator.pushReplacementNamed(context, exitRoute); // Navigate to the exit route
+        } else {
+          // Perform actions if the user canceled exit
+          _resumeGame(); 
         }
-        return true;
       },
+    );
+    return shouldPop; // Only pop if confirmed (shouldPop is true)
+  }
+  return true;
+},
       child: Scaffold(
-        // backgroundColor: const Color.fromARGB(255, 224, 213, 236),
+       // backgroundColor: const Color.fromARGB(255, 224, 213, 236),
         appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
-          child: CustomAppBar(),
-        ),
+        preferredSize: const Size.fromHeight(60),
+        child: CustomAppBar(),
+      ),
         body: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -345,40 +318,32 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
             SizedBox(
               child: gameStarted
                   ? PieTimerWidget(
-                pieAnimationController: _pieAnimationController,
-                duration: _duration,
-                onCompleted: () => {
-                  _audioPlayer.pause(),
-                  _stopTalking(),
-                  setState(() {
-                    gameEnded = true;
-                  }),
-                  _stars = 5,
-                  _elapsedTime = _duration,
-
-                  // Get the user ID and save game session
-                  _authService.currentUserId != null ? _hiveService.saveGameSession(
-                      uid: _authService.currentUserId!,
-                      timePlayed: _startTime!,
-                      duration: _elapsedTime.inMinutes,
-                      points: _stars
-                  ) : null,
-
-                  Navigator.pushReplacementNamed(context, '/victory'),
-                },
-              )
+                      pieAnimationController: _pieAnimationController,
+                      duration: _duration,
+                      onCompleted: () => {
+                            _audioPlayer.pause(),
+                            _stopTalking(),
+                            setState(() {
+                              gameEnded = true;
+                            }),
+                             _stars = 5,
+                             _elapsedTime = _duration,
+                             _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars),
+                            Navigator.pushReplacementNamed(context, '/victory'),
+                          },
+                    )
                   : Text(
-                "Tap on the mic, speak your mind and tap again to stop",
-                style: TextStyle(
-                  fontSize: screenWidth * 0.035,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primaryTextColor,
-                ),
+                      "Tap on the mic, speak your mind and tap again to stop",
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.035,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primaryTextColor,
+                      ),
               ),
             ),
             SizedBox(height: 40, width: 20),
-            Balloon(balloonVisible: balloonVisible, onTap: _balloonTap, controllers: [_balloonFloat, _balloonPop], ),
-            MascotWidget(gameStarted: gameStarted, controllers: [_eyeBlinkController, _talkingController]),
+           Balloon(balloonVisible: balloonVisible, onTap: _balloonTap, controllers: [_balloonFloat, _balloonPop], ),
+           MascotWidget(gameStarted: gameStarted, controllers: [_eyeBlinkController, _talkingController]),
             Visibility(
               visible: !gameStarted,
               child: Column(

@@ -1,143 +1,119 @@
-import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:resilify/models/UserDTO.dart';
+import 'package:resilify/models/user_main.dart';
 import 'package:resilify/services/hive_service.dart';
-import 'package:resilify/services/api_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// Make AuthService extend ChangeNotifier to work with Provider
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final HiveService _hiveService = HiveService();
-  final ApiService _apiService = ApiService();
 
   // Flag to track if auth state has been initialized
   bool _authStateInitialized = false;
 
-  // User data
-  User? _firebaseUser;
-  String? _displayName;
-
-  // Constructor - start listening to auth changes
+  // Constructor to listen for auth state changes
   AuthService() {
-    _initializeAuthState();
-  }
-
-  // Initialize the auth state
-  Future<void> _initializeAuthState() async {
     _auth.authStateChanges().listen((User? user) {
-      _firebaseUser = user;
-      _loadUserData();
       _authStateInitialized = true;
       notifyListeners();
     });
   }
 
-  // Load additional user data from Firestore if available
-  Future<void> _loadUserData() async {
-    if (_firebaseUser != null) {
-      try {
-        final doc = await _firestore.collection('users').doc(_firebaseUser!.uid).get();
-        if (doc.exists) {
-          final data = doc.data();
-          if (data != null && data.containsKey('firstName') && data.containsKey('lastName')) {
-            _displayName = "${data['firstName']} ${data['lastName']}";
-          } else {
-            _displayName = _firebaseUser!.displayName;
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('Error loading user data: $e');
-        }
-      }
-    }
-  }
-
-  // Check if auth state is initialized
+  // Getter for auth state initialization
   bool get authStateInitialized => _authStateInitialized;
 
-  // Get current user ID
-  String? get currentUserId => _firebaseUser?.uid;
+  // Getter to check if user is logged in
+  bool get isLoggedIn => _auth.currentUser != null;
 
-  // Get user email
-  String? get userEmail => _firebaseUser?.email;
+  // Get the current user from Firebase
+  User? get currentUser => _auth.currentUser;
 
-  // Get display name
-  String? get displayName => _displayName ?? _firebaseUser?.displayName;
+  // Get the current user's ID
+  String? get currentUserId => _auth.currentUser?.uid;
 
-  // Check if user is logged in
-  bool get isLoggedIn => _firebaseUser != null;
-
-  // Auth state changes stream
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
-
-  // Get cached token for backend authentication
+  // Get the current user's ID token
   Future<String?> getIdToken() async {
-    if (!isLoggedIn) return null;
     try {
-      return await _firebaseUser?.getIdToken();
+      return await _auth.currentUser?.getIdToken();
     } catch (e) {
-      if (kDebugMode) {
-        print('Error getting ID token: $e');
-      }
+      print('Error getting ID token: $e');
       return null;
     }
   }
 
-  // Sync user with backend
-  Future<void> syncUserWithBackendDirect(String userId, String firstName, String lastName) async {
+  // Sign in with email and password
+  Future<UserCredential?> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+    required BuildContext context,
+  }) async {
     try {
-      // Save to Firestore
-      await _firestore.collection('users').doc(userId).set({
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': userEmail,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Also sync with your existing backend
-      await _apiService.syncUserProfile(
-        firstName: firstName,
-        lastName: lastName,
-        email: userEmail ?? '',
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
 
-      if (kDebugMode) {
-        print("User synced with backend successfully");
+      // Fetch user data from Firestore
+      if (userCredential.user != null) {
+        final uid = userCredential.user!.uid;
+
+        // Try to get user from Firestore
+        final docSnapshot = await _firestore.collection('users').doc(uid).get();
+
+        if (docSnapshot.exists) {
+          // Save user to Hive for offline access
+          final userData = docSnapshot.data()!;
+          final user = UserMain(
+            uid: uid,
+            firstName: userData['firstName'] ?? '',
+            lastName: userData['lastName'] ?? '',
+            points: userData['points'] ?? 0,
+            streak: userData['streak'] ?? 0,
+          );
+
+          await _hiveService.saveUser(user);
+        }
       }
+
+      notifyListeners();
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'user-not-found':
+          errorMessage = 'No user found with this email.';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Wrong password provided.';
+          break;
+        case 'invalid-email':
+          errorMessage = 'The email address is not valid.';
+          break;
+        case 'user-disabled':
+          errorMessage = 'This user has been disabled.';
+          break;
+        default:
+          errorMessage = 'An error occurred: ${e.message}';
+      }
+
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+
+      return null;
     } catch (e) {
-      if (kDebugMode) {
-        print("Error syncing user with backend: $e");
-      }
-      // Continue even if backend sync fails - we'll retry later
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('An unexpected error occurred: $e')),
+      );
+      return null;
     }
   }
 
-  // Sync a game session to the backend
-  Future<void> syncGameSessionToBackend(
-      DateTime timePlayed,
-      int duration,
-      int points,
-      String activityType
-      ) async {
-    try {
-      await _apiService.saveGameSession(
-        timePlayed: timePlayed,
-        duration: duration,
-        points: points,
-        activityType: activityType,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error syncing game session to backend: $e");
-      }
-      rethrow;
-    }
-  }
-
-  // Sign Up with Email & Password
+  // Sign up with email and password
   Future<UserCredential?> signUpWithEmailAndPassword({
     required String email,
     required String password,
@@ -146,228 +122,191 @@ class AuthService extends ChangeNotifier {
     required BuildContext context,
   }) async {
     try {
-      // Create the user in Firebase Auth
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Get the new user
-      final user = userCredential.user;
-      if (user != null) {
-        // Store user data in Firestore
-        await _firestore.collection('users').doc(user.uid).set({
+      if (userCredential.user != null) {
+        final uid = userCredential.user!.uid;
+
+        // Create user in Firestore
+        await _firestore.collection('users').doc(uid).set({
+          'email': email,
           'firstName': firstName,
           'lastName': lastName,
-          'email': email,
+          'points': 0,
+          'streak': 0,
           'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // Update display name in Firebase Auth
-        await user.updateDisplayName('$firstName $lastName');
+        // Create user in Hive
+        final user = UserMain(
+          uid: uid,
+          firstName: firstName,
+          lastName: lastName,
+          points: 0,
+          streak: 0,
+        );
 
-        // Store user data in Hive for offline access with error handling
-        try {
-          UserDTO userDTO = UserDTO(
-            id: user.uid,
-            email: email,
-            firstName: firstName,
-            lastName: lastName,
-          );
-          await _hiveService.saveUser(user.uid, userDTO);
-          print("✅ User saved to Hive successfully");
-        } catch (hiveError) {
-          // Log the Hive error but continue - don't break sign-up flow
-          print("⚠️ Warning: Failed to save user to Hive: $hiveError");
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Sign-up successful, but local data storage failed. Some features may be limited."),
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-
-        // Sync with backend
-        try {
-          await syncUserWithBackendDirect(user.uid, firstName, lastName);
-        } catch (syncError) {
-          // Log the sync error but continue - don't break sign-up flow
-          print("⚠️ Warning: Failed to sync user with backend: $syncError");
-        }
-
-        // Update local state
-        _displayName = '$firstName $lastName';
-        notifyListeners();
-
-        return userCredential;
+        await _hiveService.saveUser(user);
       }
-      return null;
+
+      notifyListeners();
+      return userCredential;
     } on FirebaseAuthException catch (e) {
       String errorMessage;
-      if (e.code == 'weak-password') {
-        errorMessage = 'The password provided is too weak.';
-      } else if (e.code == 'email-already-in-use') {
-        errorMessage = 'The account already exists for that email.';
-      } else {
-        errorMessage = e.message ?? 'An error occurred during sign up.';
+      switch (e.code) {
+        case 'email-already-in-use':
+          errorMessage = 'Email is already in use.';
+          break;
+        case 'invalid-email':
+          errorMessage = 'The email address is not valid.';
+          break;
+        case 'weak-password':
+          errorMessage = 'The password is too weak.';
+          break;
+        case 'operation-not-allowed':
+          errorMessage = 'Email/password accounts are not enabled.';
+          break;
+        default:
+          errorMessage = 'An error occurred: ${e.message}';
       }
-      _showErrorMessage(context, errorMessage);
-      return null;
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error during sign up: $e');
-      }
-      _showErrorMessage(context, "Sign up failed: $e");
-      return null;
-    }
-  }
 
-  // Sign In with Email & Password
-  Future<UserCredential?> signInWithEmailAndPassword({
-    required String email,
-    required String password,
-    required BuildContext context,
-  }) async {
-    try {
-      // Sign in with Firebase Auth
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
       );
 
-      // Get the user
-      final user = userCredential.user;
-      if (user != null) {
-        // Get user data from Firestore
-        final doc = await _firestore.collection('users').doc(user.uid).get();
-        if (doc.exists) {
-          final data = doc.data();
-          if (data != null && data.containsKey('firstName') && data.containsKey('lastName')) {
-            _displayName = "${data['firstName']} ${data['lastName']}";
-
-            // Store in Hive for offline access
-            UserDTO userDTO = UserDTO(
-              id: user.uid,
-              email: email,
-              firstName: data['firstName'],
-              lastName: data['lastName'],
-            );
-            await _hiveService.saveUser(user.uid, userDTO);
-
-            // Try to sync any local sessions with backend
-            await _hiveService.syncLocalSessionsWithBackend(syncGameSessionToBackend);
-          }
-        }
-
-        notifyListeners();
-        return userCredential;
-      }
-      return null;
-    } on FirebaseAuthException catch (e) {
-      String errorMessage;
-      if (e.code == 'user-not-found') {
-        errorMessage = 'No user found for that email.';
-      } else if (e.code == 'wrong-password') {
-        errorMessage = 'Wrong password provided for that user.';
-      } else {
-        errorMessage = e.message ?? 'An error occurred during sign in.';
-      }
-      _showErrorMessage(context, errorMessage);
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        print('Error during sign in: $e');
-      }
-      _showErrorMessage(context, "Sign in failed: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('An unexpected error occurred: $e')),
+      );
       return null;
     }
   }
 
-  // Sign Out
+  // Sign out
   Future<void> signOut() async {
     await _auth.signOut();
-    _displayName = null;
     notifyListeners();
   }
 
-  // Reset Password
+  // Reset password
   Future<void> resetPassword(String email, BuildContext context) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Password reset email sent to $email")),
+        SnackBar(content: Text('Password reset email sent to $email')),
       );
     } on FirebaseAuthException catch (e) {
-      _showErrorMessage(context, e.message ?? "Password reset failed");
-    } catch (e) {
-      _showErrorMessage(context, "Password reset failed: $e");
+      String errorMessage;
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'The email address is not valid.';
+          break;
+        case 'user-not-found':
+          errorMessage = 'No user found with this email.';
+          break;
+        default:
+          errorMessage = 'An error occurred: ${e.message}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
     }
   }
 
-  // Update User Profile
+  // Update user profile
   Future<void> updateUserProfile({
     required String firstName,
     required String lastName,
-    BuildContext? context,
+    required BuildContext context,
   }) async {
     try {
-      if (_firebaseUser != null) {
+      final user = _auth.currentUser;
+
+      if (user != null) {
         // Update in Firestore
-        await _firestore.collection('users').doc(_firebaseUser!.uid).update({
+        await _firestore.collection('users').doc(user.uid).update({
           'firstName': firstName,
           'lastName': lastName,
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // Update display name in Firebase Auth
-        await _firebaseUser!.updateDisplayName('$firstName $lastName');
-
-        // Update local state
-        _displayName = '$firstName $lastName';
-
         // Update in Hive
-        await _hiveService.updateUser(
-          _firebaseUser!.uid,
-          firstName: firstName,
-          lastName: lastName,
+        final userData = _hiveService.getUser(user.uid);
+        if (userData != null) {
+          userData.firstName = firstName;
+          userData.lastName = lastName;
+          await _hiveService.saveUser(userData);
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Profile updated successfully')),
         );
 
-        // Sync with backend
-        await syncUserWithBackendDirect(_firebaseUser!.uid, firstName, lastName);
-
         notifyListeners();
-
-        if (context != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Profile updated successfully")),
-          );
-        }
       }
     } catch (e) {
-      if (context != null) {
-        _showErrorMessage(context, "Error updating profile: $e");
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating profile: $e')),
+      );
     }
   }
 
-  // Get current user as UserDTO
+  // Get current user as DTO
   UserDTO? getCurrentUserDTO() {
-    if (_firebaseUser == null) return null;
+    final user = _auth.currentUser;
 
-    return UserDTO(
-      id: _firebaseUser!.uid,
-      email: _firebaseUser!.email ?? '',
-      firstName: _displayName?.split(' ').first ?? '',
-      lastName: _displayName?.split(' ').last ?? '',
-      photoURL: _firebaseUser!.photoURL,
-    );
+    if (user != null) {
+      final userData = _hiveService.getUser(user.uid);
+
+      if (userData != null) {
+        return UserDTO(
+          id: user.uid,
+          email: user.email ?? '',
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          photoURL: user.photoURL,
+        );
+      }
+    }
+
+    return null;
   }
 
-  // Show error message
-  void _showErrorMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+  // Update password
+  Future<void> updatePassword(String newPassword, BuildContext context) async {
+    try {
+      final user = _auth.currentUser;
+
+      if (user != null) {
+        await user.updatePassword(newPassword);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Password updated successfully')),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+      switch (e.code) {
+        case 'weak-password':
+          errorMessage = 'The password is too weak.';
+          break;
+        case 'requires-recent-login':
+          errorMessage = 'Please sign in again before changing your password.';
+          break;
+        default:
+          errorMessage = 'An error occurred: ${e.message}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    }
   }
 }

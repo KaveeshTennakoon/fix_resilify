@@ -38,7 +38,7 @@ class StreakService {
         .inHours; //checking the diffrence between that session and now
     var user = userBox.get(userId);
     print("Hours difference from last session: $hoursDifference");
-    if (hoursDifference >24 && hoursDifference < 48) {
+     if (hoursDifference >24 && hoursDifference < 48) {
       return true; // Show gray streak
     }
     if (hoursDifference > 48) {
@@ -49,7 +49,7 @@ class StreakService {
       }
       return true; // Show gray streak
     }
-    else {
+     else {
       return false; // User played within the last 48 hours → No streak reset or no gray streak
     }
   }
@@ -75,7 +75,7 @@ class StreakService {
     }
 
     latestStreakWorthySession =
-    userSessions[1]; //else, we get the last streakworthy session
+        userSessions[1]; //else, we get the last streakworthy session
 
     print(
         "Latest streak-worthy session: ${latestStreakWorthySession?.timePlayed}");
@@ -86,7 +86,7 @@ class StreakService {
         now.difference(lastPlayedDate).inHours; //get the difference as usual
     var user = userBox.get(userId);
     print("Hours difference from last session: $hoursDifference");
-
+   
     if (hoursDifference > 48) {
       // If last worthy session was over 48 hours ago, reset streak and allow streak update
       if (user != null) {

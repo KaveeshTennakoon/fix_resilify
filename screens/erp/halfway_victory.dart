@@ -6,7 +6,7 @@ import 'package:rive/rive.dart';
 
 class HalfwayVictory extends StatefulWidget {
   final int? stars;
-
+  
   const HalfwayVictory({super.key, this.stars});
 
   @override
@@ -21,8 +21,8 @@ class _HalfwayVictoryState extends State<HalfwayVictory> {
   final AuthService _authService = AuthService();
   final StreakService _streakService = StreakService();
 
-  @override
-  void initState() {
+    @override
+    void initState() {
     super.initState();
     _idle = SimpleAnimation('idle', autoplay: true);
     _open = SimpleAnimation('open', autoplay: false);
@@ -39,10 +39,10 @@ class _HalfwayVictoryState extends State<HalfwayVictory> {
   }
 
   _checkStreakStatusAndNavigate() async {
-    String? userId = _authService.currentUserId;
+    String? userId = _authService.currentUser?.uid;
     if (userId != null) {
       bool canProceedToStreak = await _streakService.shouldGoToStreak(userId);
-      print("halfway_victory: can i go to streak? $canProceedToStreak");
+      print ("halfway_victory: can i go to streak? $canProceedToStreak");
       if (canProceedToStreak) {
         _navigateToStreak();
       } else {

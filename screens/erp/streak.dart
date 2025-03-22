@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:resilify/core/app_colors.dart';
 import 'package:resilify/models/user_main.dart';
@@ -28,11 +29,11 @@ class _StreakState extends State<Streak> {
     _navigateToHome();
   }
 
-  // Method to get the current streak from Hive and increase
+  // Method to get the current streak from Hive and increase 
   Future<void> _updateStreakData() async {
-    String? currentUserId = _authService.currentUserId;
-    if (currentUserId != null) {
-      UserMain? userData = _hiveService.getUser(currentUserId);
+    User? currentUser = _authService.currentUser;
+    if (currentUser != null) {
+      UserMain? userData = _hiveService.getUser(currentUser.uid);
       if (userData != null) {
         _value = userData.streak!;
       }
@@ -43,7 +44,7 @@ class _StreakState extends State<Streak> {
       setState(() {
         _value++;
       });
-      _hiveService.updateStreak(currentUserId, streak: _value); // Update streak value in Hive
+      _hiveService.updateStreak(currentUser.uid,streak: _value); // Update streak value in Hive
     }
   }
 
@@ -79,24 +80,23 @@ class _StreakState extends State<Streak> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center, // center the children
             crossAxisAlignment:
-            CrossAxisAlignment.center, // center horizontally
+                CrossAxisAlignment.center, // center horizontally
             children: [
               SizedBox(
                 height: 200,
                 child: _isFlameOn
                     ? rive.RiveAnimation.asset(
-                  'assets/animations/flame.riv',
-                  controllers: [_flame],
-                )
+                        'assets/animations/flame.riv',
+                        controllers: [_flame],
+                      )
                     : Image.asset(
-                  'assets/img/unstreak.png',
-                  height: 210,
-                  width: 140,
-                ),
+                        'assets/img/unstreak.png',
+                        height: 210,
+                        width: 140,
+                      ),
               ),
               SizedBox(height: 14),
               AnimatedFlipCounter(
-                duration: Duration(milliseconds: 500),
                 value: _value,
                 textStyle: TextStyle(
                   fontSize: 70,

@@ -1,278 +1,311 @@
-import 'package:resilify/models/UserDTO.dart';
 import 'package:hive/hive.dart';
-import 'package:flutter/foundation.dart';
-import '../models/user_main.dart';
-import '../models/game_data.dart';
-import '../models/sentiment_data.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:resilify/models/game_data.dart';
+import 'package:resilify/models/user_main.dart';
+import 'package:resilify/models/sentiment_data.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HiveService {
-  static const String gameSessionsBoxName = 'game_data';
+  static const String userBoxName = 'user_main';
+  static const String gameBoxName = 'game_data';
+  static const String sentimentBoxName = 'sentiment_data';
 
-  // Singleton pattern - modified to avoid circular dependency
-  static final HiveService _instance = HiveService._internal();
+  // Firebase instances
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  factory HiveService() {
-    return _instance;
-  }
+  // Get current user ID from Firebase
+  String? get currentUserId => _auth.currentUser?.uid;
 
-  HiveService._internal();
-
-  /// Initialize Hive and register adapters
+  // Static method to initialize Hive (called from main.dart)
   static Future<void> initHive() async {
     try {
-      // Register adapters if they're not already registered
+      // Register adapters if not already registered
       if (!Hive.isAdapterRegistered(0)) {
         Hive.registerAdapter(UserMainAdapter());
       }
+
       if (!Hive.isAdapterRegistered(1)) {
         Hive.registerAdapter(GameDataAdapter());
       }
+
       if (!Hive.isAdapterRegistered(2)) {
         Hive.registerAdapter(SentimentDataAdapter());
       }
 
-      // Open boxes with error handling
-      if (!Hive.isBoxOpen('user_main')) {
-        await Hive.openBox<UserMain>('user_main');
-      }
-      if (!Hive.isBoxOpen('game_data')) {
-        await Hive.openBox<GameData>('game_data');
-      }
-      if (!Hive.isBoxOpen('sentiment_data')) {
-        await Hive.openBox<SentimentData>('sentiment_data');
-      }
+      // Open boxes
+      await Hive.openBox<UserMain>(userBoxName);
+      await Hive.openBox<GameData>(gameBoxName);
+      await Hive.openBox<SentimentData>(sentimentBoxName);
 
-      print("✅ Hive boxes opened successfully.");
+      print("Hive initialization successful");
     } catch (e) {
-      print("❌ Error opening Hive boxes: $e");
-      // Re-throw the error with a more descriptive message
-      throw Exception("Failed to initialize Hive: $e");
+      print("Error initializing Hive: $e");
     }
   }
 
-  /// Save User with UID
-  Future<void> saveUser(String uid, UserDTO userDTO) async {
-    try {
-      // Make sure the box is open before trying to use it
-      if (!Hive.isBoxOpen('user_main')) {
-        await Hive.openBox<UserMain>('user_main');
-      }
+  // USER OPERATIONS
 
-      // Get box reference
-      var userBox = Hive.box<UserMain>('user_main');
-
-      // Check if user already exists
-      UserMain? existingUser = userBox.get(uid);
-
-      if (existingUser != null) {
-        // Update existing user
-        existingUser.firstName = userDTO.firstName;
-        existingUser.lastName = userDTO.lastName;
-        existingUser.points = existingUser.points ?? 0;
-        existingUser.streak = existingUser.streak ?? 0;
-        await userBox.put(uid, existingUser);
-      } else {
-        // Create new user
-        var user = UserMain(
-          uid: uid,
-          firstName: userDTO.firstName,
-          lastName: userDTO.lastName,
-          points: 0,
-          streak: 0,
-        );
-        await userBox.put(uid, user);
-      }
-
-      if (kDebugMode) {
-        print(
-            "✅ User stored: FirstName>${userDTO.firstName} LastName>${userDTO.lastName}, UID > $uid");
-      }
-    } catch (e) {
-      print("❌ Error saving user to Hive: $e");
-      // Re-throw with descriptive message
-      throw Exception("Failed to save user data: $e");
-    }
-  }
-
-  /// Retrieve user by UID
+  // Get user from local Hive storage
   UserMain? getUser(String uid) {
-    var userBox = Hive.box<UserMain>('user_main');
-    return userBox.get(uid);
-  }
-
-  /// Retrieve stored UID for auto-login
-  String? getStoredUID() {
-    var userBox = Hive.box<UserMain>('user_main');
-    if (userBox.isNotEmpty) {
-      return userBox.values.first.uid; // Get first stored UID
+    try {
+      final userBox = Hive.box<UserMain>(userBoxName);
+      return userBox.get(uid);
+    } catch (e) {
+      print("Error getting user: $e");
+      return null;
     }
-    return null;
   }
 
-  /// Update user details
-  Future<void> updateUser(String userId,
-      {String? firstName, String? lastName}) async {
-    var box = Hive.box<UserMain>('user_main');
-    var user = box.get(userId);
+  // Save user to both Hive and Firebase
+  Future<void> saveUser(UserMain user) async {
+    try {
+      // Save to Hive for local access
+      final userBox = Hive.box<UserMain>(userBoxName);
+      await userBox.put(user.uid, user);
 
-    if (user != null) {
-      user.firstName = firstName ?? user.firstName;
-      user.lastName = lastName ?? user.lastName;
-      box.put(userId, user);
-      if (kDebugMode) {
-        print("✅ User updated: $userId");
+      // Save to Firebase
+      await _firestore.collection('users').doc(user.uid).set({
+        'firstName': user.firstName,
+        'lastName': user.lastName,
+        'points': user.points ?? 0,
+        'streak': user.streak ?? 0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print("User data saved successfully");
+    } catch (e) {
+      print("Error saving user: $e");
+    }
+  }
+
+  // Update user's streak in both Hive and Firebase
+  Future<void> updateStreak(String uid, {required int streak}) async {
+    try {
+      // Update in Hive
+      final userBox = Hive.box<UserMain>(userBoxName);
+      final user = userBox.get(uid);
+
+      if (user != null) {
+        user.streak = streak;
+        await userBox.put(uid, user);
+
+        // Update in Firebase
+        await _firestore.collection('users').doc(uid).update({
+          'streak': streak,
+          'lastStreakUpdate': FieldValue.serverTimestamp(),
+        });
+
+        print("Streak updated to $streak");
+      } else {
+        print("User not found for streak update");
       }
-    } else {
-      if (kDebugMode) {
-        print("⚠️ User not found: $userId");
+    } catch (e) {
+      print("Error updating streak: $e");
+    }
+  }
+
+  // Update user's points in both Hive and Firebase
+  Future<void> updatePoints(String uid, {required int points}) async {
+    try {
+      // Update in Hive
+      final userBox = Hive.box<UserMain>(userBoxName);
+      final user = userBox.get(uid);
+
+      if (user != null) {
+        user.points = points;
+        await userBox.put(uid, user);
+
+        // Update in Firebase
+        await _firestore.collection('users').doc(uid).update({
+          'points': points,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        print("Points updated to $points");
+      } else {
+        print("User not found for points update");
       }
+    } catch (e) {
+      print("Error updating points: $e");
     }
   }
 
-  /// Delete user
-  Future<void> deleteUser(String userId) async {
-    var box = Hive.box<UserMain>('user_main');
-    await box.delete(userId);
-    if (kDebugMode) {
-      print("🗑️ User deleted: $userId");
+  // Sync user data from Firebase to Hive
+  Future<UserMain?> syncUserFromFirebase(String uid) async {
+    try {
+      final docSnapshot = await _firestore.collection('users').doc(uid).get();
+
+      if (docSnapshot.exists) {
+        final userData = docSnapshot.data()!;
+        final user = UserMain(
+          uid: uid,
+          firstName: userData['firstName'] ?? '',
+          lastName: userData['lastName'] ?? '',
+          points: userData['points'] ?? 0,
+          streak: userData['streak'] ?? 0,
+        );
+
+        // Save to Hive
+        final userBox = Hive.box<UserMain>(userBoxName);
+        await userBox.put(uid, user);
+
+        print("User data synced from Firebase");
+        return user;
+      }
+      print("User document not found in Firebase");
+      return null;
+    } catch (e) {
+      print("Error syncing user from Firebase: $e");
+      return null;
     }
   }
 
-  /// Saves game session data locally (Hive)
+  // GAME SESSION OPERATIONS
+
+  // Save game session to both Hive and Firebase
   Future<void> saveGameSession({
     required String uid,
     required DateTime timePlayed,
     required int duration,
     required int points,
-    Function(DateTime, int, int)? syncToBackend,
+    String activityType = 'erp',
   }) async {
-    var gameBox = Hive.box<GameData>('game_data');
+    try {
+      // Create game data object
+      final gameData = GameData(
+        timePlayed: timePlayed,
+        duration: duration,
+        points: points,
+        uid: uid,
+      );
 
-    // Create new game data object
-    var newSession = GameData(
-      uid: uid,
-      timePlayed: timePlayed,
-      duration: duration,
-      points: points,
-    );
+      // Save to Hive
+      final gameBox = Hive.box<GameData>(gameBoxName);
+      await gameBox.add(gameData);
 
-    // Save locally for offline access
-    await gameBox.add(newSession);
-    updatePoints(uid, points: points); // Hive auto-generates key in add method
-    if (kDebugMode) {
-      print("✅ New game session saved locally");
-    }
+      // Add to Firebase
+      await _firestore.collection('game_sessions').add({
+        'uid': uid,
+        'timePlayed': Timestamp.fromDate(timePlayed),
+        'duration': duration,
+        'points': points,
+        'activityType': activityType,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-    // Save to backend if sync function is provided
-    if (syncToBackend != null) {
-      try {
-        await syncToBackend(timePlayed, duration, points);
-        if (kDebugMode) {
-          print("✅ Game session sent to backend");
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print("⚠️ Failed to send game session to backend: $e");
-        }
+      // Update user's total points
+      final userBox = Hive.box<UserMain>(userBoxName);
+      final user = userBox.get(uid);
+      if (user != null) {
+        final currentPoints = user.points ?? 0;
+        final newPoints = currentPoints + points;
+        await updatePoints(uid, points: newPoints);
       }
-    }
 
-    print("New game session saved for user $uid");
+      print("Game session saved successfully");
+    } catch (e) {
+      print("Error saving game session: $e");
+    }
   }
 
-  // Read all game sessions for user
+  // Get user's game sessions from Hive
   List<GameData> getUserGameSessions(String uid) {
-    var gameBox = Hive.box<GameData>('game_data');
-    return gameBox.values.where((session) => session.uid == uid).toList();
-  }
-
-  List<GameData> getAllGameSessions() {
-    var gameBox = Hive.box<GameData>('game_data');
-    return gameBox.values.toList();
-  }
-
-  //update user points
-  Future<void> updatePoints(String userId, {required int points}) async {
-    var userBox = Hive.box<UserMain>('user_main');
-    var user = userBox.get(userId);
-    if (user != null ) {
-      user.points = (user.points ?? 0) + points;
-      await user.save();
+    try {
+      final gameBox = Hive.box<GameData>(gameBoxName);
+      return gameBox.values.where((game) => game.uid == uid).toList();
+    } catch (e) {
+      print("Error getting user game sessions: $e");
+      return [];
     }
   }
 
-  //update user streak
-  Future<void> updateStreak(String userId, {required int streak}) async {
-    var userBox = Hive.box<UserMain>('user_main');
-    var user = userBox.get(userId);
-    if (user != null) {
-      user.streak = streak;
-      await user.save();
-    }
-  }
+  // Sync game sessions from Firebase to Hive
+  Future<void> syncGameSessionsFromFirebase(String uid) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('game_sessions')
+          .where('uid', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .get();
 
-  /// Update SentimentData
-  Future<void> updateSentiment(String sentimentId,
-      {double? score, String? prompt}) async {
-    var box = Hive.box<SentimentData>('sentiment_data');
-    var sentiment = box.get(sentimentId);
+      final gameBox = Hive.box<GameData>(gameBoxName);
 
-    if (sentiment != null) {
-      box.put(
-          sentimentId,
-          sentiment.copyWith(
-            score: score ?? sentiment.score,
-            prompt: prompt ?? sentiment.prompt,
-          ));
-      if (kDebugMode) {
-        print("😊 Sentiment updated: $sentimentId");
+      // Clear existing records for this user
+      final existingRecords = gameBox.values.where((game) => game.uid == uid).toList();
+      for (var record in existingRecords) {
+        await record.delete();
       }
-    } else {
-      if (kDebugMode) {
-        print("⚠️ Sentiment not found: $sentimentId");
-      }
-    }
-  }
 
-  /// Clear all user data (for logout)
-  Future<void> clearUserData() async {
-    var userBox = Hive.box<UserMain>('user_main');
-    await userBox.clear();
-    if (kDebugMode) {
-      print("🧹 All user data cleared");
-    }
-  }
-
-  /// Syncs local game sessions with the backend using the provided function
-  Future<void> syncLocalSessionsWithBackend(
-      Future<void> Function(DateTime, int, int, String) syncFunction
-      ) async {
-    if (kDebugMode) {
-      print("🔄 Starting sync of local sessions with backend...");
-    }
-
-    final sessions = getAllGameSessions();
-    int syncCount = 0;
-
-    for (var session in sessions) {
-      try {
-        await syncFunction(
-            session.timePlayed,
-            session.duration,
-            session.points,
-            'erp'
+      // Add new records from Firebase
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final gameData = GameData(
+          timePlayed: (data['timePlayed'] as Timestamp).toDate(),
+          duration: data['duration'],
+          points: data['points'],
+          uid: uid,
         );
-        syncCount++;
-      } catch (e) {
-        if (kDebugMode) {
-          print("⚠️ Failed to sync session: $e");
-        }
-        // Continue with next session even if this one fails
+        await gameBox.add(gameData);
       }
-    }
 
-    if (kDebugMode) {
-      print("✅ Synced $syncCount/${sessions.length} sessions with backend");
+      print("Game sessions synced from Firebase");
+    } catch (e) {
+      print("Error syncing game sessions from Firebase: $e");
+    }
+  }
+
+  // SENTIMENT DATA OPERATIONS
+
+  // Save sentiment data
+  Future<void> saveSentimentData(SentimentData sentimentData) async {
+    try {
+      final sentimentBox = Hive.box<SentimentData>(sentimentBoxName);
+      await sentimentBox.put(sentimentData.sentimentId, sentimentData);
+
+      // You can also save to Firebase if needed
+      await _firestore.collection('sentiment_data').add({
+        'sentimentId': sentimentData.sentimentId,
+        'time': Timestamp.fromDate(sentimentData.time),
+        'score': sentimentData.score,
+        'prompt': sentimentData.prompt,
+        'uid': _auth.currentUser?.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print("Sentiment data saved successfully");
+    } catch (e) {
+      print("Error saving sentiment data: $e");
+    }
+  }
+
+  // Check if today is a new day to update streak
+  Future<bool> isNewDay(String uid) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('game_sessions')
+          .where('uid', isEqualTo: uid)
+          .orderBy('timePlayed', descending: true)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        return true; // No previous sessions, so it's a new day
+      }
+
+      final lastSession = querySnapshot.docs.first.data();
+      final lastPlayedDate = (lastSession['timePlayed'] as Timestamp).toDate();
+
+      // Compare the date part only
+      final today = DateTime.now();
+      final lastPlayedDay = DateTime(lastPlayedDate.year, lastPlayedDate.month, lastPlayedDate.day);
+      final currentDay = DateTime(today.year, today.month, today.day);
+
+      return currentDay.isAfter(lastPlayedDay);
+    } catch (e) {
+      print("Error checking if new day: $e");
+      return false;
     }
   }
 }

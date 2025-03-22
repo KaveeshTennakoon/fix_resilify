@@ -24,9 +24,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:resilify/services/auth_service.dart';
 import 'package:resilify/screens/landing/profile.dart';
-import 'package:hive_flutter/hive_flutter.dart'; // Import this
-import 'package:resilify/services/hive_service.dart'; // Import this
-import 'package:path_provider/path_provider.dart'; // Import this
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:resilify/services/hive_service.dart';
 
 // Entry point for the application
 void main() async {
@@ -42,7 +41,7 @@ void main() async {
 
   // Run the app with authentication provider
   runApp(
-    ChangeNotifierProvider(
+    ChangeNotifierProvider<AuthService>(
       create: (_) => AuthService(),
       child: Resilify(),
     ),
@@ -50,6 +49,8 @@ void main() async {
 }
 
 class Resilify extends StatelessWidget {
+  const Resilify({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -64,8 +65,8 @@ class Resilify extends StatelessWidget {
         routes: {
           '/splash': (context) => const Splash(),
           '/landing': (context) => const Landing(),
-          '/signin': (context) => Signin(),
-          '/signup': (context) => Signup(),
+          '/signin': (context) => const Signin(),
+          '/signup': (context) => const Signup(),
           '/home': (context) => const Home(),
           '/breathing_exercise': (context) => const Breathing(),
           '/ThriveAndGrow': (context) => const ThriveAndGrow(),
@@ -79,9 +80,9 @@ class Resilify extends StatelessWidget {
           '/erp_loop': (context) => const ERPLoopPage(),
           '/victory': (context) => const Victory(stars: 5),
           '/game_over': (context) => const GameOver(),
-          '/streak': (context) => Streak(),
-          '/halfway_victory': (context) => HalfwayVictory(stars: 3),
-          '/profile': (context) => Profile(),
+          '/streak': (context) => const Streak(),
+          '/halfway_victory': (context) => const HalfwayVictory(stars: 3),
+          '/profile': (context) => const Profile(),
         }
     );
   }
@@ -89,16 +90,18 @@ class Resilify extends StatelessWidget {
 
 // AuthWrapper handles authentication state changes
 class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
 
     // Show splash screen initially
     if (authService.authStateInitialized == false) {
-      return Splash();
+      return const Splash();
     }
 
     // If user is logged in, go to home page, otherwise go to landing
-    return authService.isLoggedIn ? Home() : Splash();
+    return authService.isLoggedIn ? const Home() : const Splash();
   }
 }
