@@ -167,17 +167,34 @@ class AuthService extends ChangeNotifier {
         // Update display name in Firebase Auth
         await user.updateDisplayName('$firstName $lastName');
 
-        // Store user data in Hive for offline access
-        UserDTO userDTO = UserDTO(
-          id: user.uid,
-          email: email,
-          firstName: firstName,
-          lastName: lastName,
-        );
-        await _hiveService.saveUser(user.uid, userDTO);
+        // Store user data in Hive for offline access with error handling
+        try {
+          UserDTO userDTO = UserDTO(
+            id: user.uid,
+            email: email,
+            firstName: firstName,
+            lastName: lastName,
+          );
+          await _hiveService.saveUser(user.uid, userDTO);
+          print("✅ User saved to Hive successfully");
+        } catch (hiveError) {
+          // Log the Hive error but continue - don't break sign-up flow
+          print("⚠️ Warning: Failed to save user to Hive: $hiveError");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Sign-up successful, but local data storage failed. Some features may be limited."),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
 
         // Sync with backend
-        await syncUserWithBackendDirect(user.uid, firstName, lastName);
+        try {
+          await syncUserWithBackendDirect(user.uid, firstName, lastName);
+        } catch (syncError) {
+          // Log the sync error but continue - don't break sign-up flow
+          print("⚠️ Warning: Failed to sync user with backend: $syncError");
+        }
 
         // Update local state
         _displayName = '$firstName $lastName';

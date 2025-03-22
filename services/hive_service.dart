@@ -19,49 +19,78 @@ class HiveService {
 
   /// Initialize Hive and register adapters
   static Future<void> initHive() async {
-    Hive.registerAdapter(UserMainAdapter());
-    Hive.registerAdapter(GameDataAdapter());
-    Hive.registerAdapter(SentimentDataAdapter());
-
     try {
-      await Hive.openBox<UserMain>('user_main');
-      await Hive.openBox<GameData>('game_data');
-      await Hive.openBox<SentimentData>('sentiment_data');
-      print("Hive boxes opened successfully.");
+      // Register adapters if they're not already registered
+      if (!Hive.isAdapterRegistered(0)) {
+        Hive.registerAdapter(UserMainAdapter());
+      }
+      if (!Hive.isAdapterRegistered(1)) {
+        Hive.registerAdapter(GameDataAdapter());
+      }
+      if (!Hive.isAdapterRegistered(2)) {
+        Hive.registerAdapter(SentimentDataAdapter());
+      }
+
+      // Open boxes with error handling
+      if (!Hive.isBoxOpen('user_main')) {
+        await Hive.openBox<UserMain>('user_main');
+      }
+      if (!Hive.isBoxOpen('game_data')) {
+        await Hive.openBox<GameData>('game_data');
+      }
+      if (!Hive.isBoxOpen('sentiment_data')) {
+        await Hive.openBox<SentimentData>('sentiment_data');
+      }
+
+      print("✅ Hive boxes opened successfully.");
     } catch (e) {
-      print("Error opening Hive boxes: $e");
+      print("❌ Error opening Hive boxes: $e");
+      // Re-throw the error with a more descriptive message
+      throw Exception("Failed to initialize Hive: $e");
     }
   }
 
   /// Save User with UID
   Future<void> saveUser(String uid, UserDTO userDTO) async {
-    var userBox = Hive.box<UserMain>('user_main');
+    try {
+      // Make sure the box is open before trying to use it
+      if (!Hive.isBoxOpen('user_main')) {
+        await Hive.openBox<UserMain>('user_main');
+      }
 
-    // Check if user already exists
-    UserMain? existingUser = userBox.get(uid);
+      // Get box reference
+      var userBox = Hive.box<UserMain>('user_main');
 
-    if (existingUser != null) {
-      // Update existing user
-      existingUser.firstName = userDTO.firstName;
-      existingUser.lastName = userDTO.lastName;
-      existingUser.points = existingUser.points ?? 0;
-      existingUser.streak = existingUser.streak ?? 0;
-      userBox.put(uid, existingUser);
-    } else {
-      // Create new user
-      var user = UserMain(
-        uid: uid,
-        firstName: userDTO.firstName,
-        lastName: userDTO.lastName,
-        points: 0,
-        streak: 0,
-      );
-      userBox.put(uid, user);
-    }
+      // Check if user already exists
+      UserMain? existingUser = userBox.get(uid);
 
-    if (kDebugMode) {
-      print(
-          "✅ User stored: FirstName>${userDTO.firstName} LastName>${userDTO.lastName}, UID > $uid");
+      if (existingUser != null) {
+        // Update existing user
+        existingUser.firstName = userDTO.firstName;
+        existingUser.lastName = userDTO.lastName;
+        existingUser.points = existingUser.points ?? 0;
+        existingUser.streak = existingUser.streak ?? 0;
+        await userBox.put(uid, existingUser);
+      } else {
+        // Create new user
+        var user = UserMain(
+          uid: uid,
+          firstName: userDTO.firstName,
+          lastName: userDTO.lastName,
+          points: 0,
+          streak: 0,
+        );
+        await userBox.put(uid, user);
+      }
+
+      if (kDebugMode) {
+        print(
+            "✅ User stored: FirstName>${userDTO.firstName} LastName>${userDTO.lastName}, UID > $uid");
+      }
+    } catch (e) {
+      print("❌ Error saving user to Hive: $e");
+      // Re-throw with descriptive message
+      throw Exception("Failed to save user data: $e");
     }
   }
 

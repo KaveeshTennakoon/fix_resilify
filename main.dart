@@ -24,11 +24,18 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:resilify/services/auth_service.dart';
 import 'package:resilify/screens/landing/profile.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // Import this
+import 'package:resilify/services/hive_service.dart'; // Import this
+import 'package:path_provider/path_provider.dart'; // Import this
 
 // Entry point for the application
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Hive first
+  await Hive.initFlutter();  // Initialize Hive with Flutter
+  await HiveService.initHive(); // Initialize HiveService adapters and boxes
 
   // Initialize Firebase
   await Firebase.initializeApp();
