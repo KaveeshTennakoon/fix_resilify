@@ -18,6 +18,8 @@ import "package:resilify/widgets/microphone.dart"; //customised mic widget
 import "package:resilify/widgets/mascot.dart"; //mascot widget
 import 'package:resilify/widgets/balloon.dart'; //balloon widget
 import 'package:resilify/services/hive_service.dart';
+import 'package:resilify/services/auth_service.dart'; // Add this import for AuthService
+
 class ERPLoopPage extends StatefulWidget {//stateful bc the animations and widgets change states
   const ERPLoopPage({super.key});
   @override
@@ -53,6 +55,8 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
   Timer? _timer; //timer for balloon appearing
   int _stars = 0; //stars collected
   final HiveService _hiveService = HiveService(); //hive service to store data
+  final AuthService _authService = AuthService(); // Add AuthService
+  String? _currentUserId; // Add variable to store current user ID
  
   @override
   void initState() {
@@ -68,6 +72,9 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
     _microphoneRecorder = MicrophoneRecorder()..init(); //initialize web voice recorder
     _balloonFloat = SimpleAnimation('Idle');
     _balloonPop = SimpleAnimation('Plop', autoplay: false);
+    
+    // Get current user ID
+    _currentUserId = _authService.currentUserId;
   }
 
   @override
@@ -219,11 +226,27 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
             _elapsedTime = DateTime.now().difference(_startTime!);
 
             if (_elapsedTime.inMilliseconds < _duration.inMilliseconds / 2) {
-              _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+              if (_currentUserId != null) {
+                // Add check for user ID
+                _hiveService.saveGameSession(
+                  uid: _currentUserId!, 
+                  timePlayed: _startTime!, 
+                  duration: _elapsedTime.inMinutes, 
+                  points: _stars
+                );
+              }
               Navigator.pushReplacementNamed(context, '/game_over');
             } else {
               _stars = 3;
-              _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+              if (_currentUserId != null) {
+                // Add check for user ID
+                _hiveService.saveGameSession(
+                  uid: _currentUserId!, 
+                  timePlayed: _startTime!, 
+                  duration: _elapsedTime.inMinutes, 
+                  points: _stars
+                );
+              }
               Navigator.pushReplacementNamed(context, '/halfway_victory');
             }
           }
@@ -293,7 +316,15 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
           if (_elapsedTime.inMilliseconds > _duration.inMilliseconds / 2) {
             _stars = 3;
           }
-          _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars);
+          if (_currentUserId != null) {
+            // Add check for user ID
+            _hiveService.saveGameSession(
+              uid: _currentUserId!,
+              timePlayed: _startTime!, 
+              duration: _elapsedTime.inMinutes, 
+              points: _stars
+            );
+          }
           Navigator.pushReplacementNamed(context, exitRoute); // Navigate to the exit route
         } else {
           // Perform actions if the user canceled exit
@@ -328,7 +359,15 @@ class _ERPLoopPageState extends State<ERPLoopPage> with TickerProviderStateMixin
                             }),
                              _stars = 5,
                              _elapsedTime = _duration,
-                             _hiveService.saveGameSession(timePlayed: _startTime!, duration: _elapsedTime.inMinutes, points: _stars),
+                             if (_currentUserId != null) {
+                               // Add check for user ID
+                               _hiveService.saveGameSession(
+                                 uid: _currentUserId!,
+                                 timePlayed: _startTime!, 
+                                 duration: _elapsedTime.inMinutes, 
+                                 points: _stars
+                               )
+                             },
                             Navigator.pushReplacementNamed(context, '/victory'),
                           },
                     )
